@@ -16,10 +16,12 @@ from sawtooth_sdk.protobuf.transaction_pb2 import Transaction
 from sawtooth_sdk.protobuf.batch_pb2 import BatchList
 from sawtooth_sdk.protobuf.batch_pb2 import BatchHeader
 from sawtooth_sdk.protobuf.batch_pb2 import Batch
+from sawtooth_barcode.barcode_reader import BarcodeReader
 """BarCodeReaderCli.
 
 Usage:
   barcode_cli.py create chain (-u <user> | --username <user>)
+  barcode_cli.py update chain (-u <user> | --username <user>)
   barcode_cli.py (-h | --help)
   barcode_cli.py --version
   # naval_fate.py ship new <name>...
@@ -141,9 +143,9 @@ class BarcodeClient:
         except BaseException as err:
             raise Exception(err)
 
-    def _send_barcode_txn(self, name, action, space="", wait=None, auth_user=None, auth_password=None):
+    def _send_barcode_txn(self, name, action, location="", wait=None, auth_user=None, auth_password=None):
         # Serialization is just a delimited utf-8 encoded string
-        payload = ",".join([name, action, str(space)]).encode()
+        payload = ",".join([name, action, location]).encode()
 
         # Construct the address
         address = self._get_address(name)
@@ -199,8 +201,8 @@ class BarcodeOperations(object):
     def create_chain(self):
         self._validate_user()
         client = BarcodeClient(base_url=DEFAULT_URL, keyfile=self.key_file)
-        name = '1234523'
-        response = client.create(name)
+        b_id = BarcodeReader.read_barcode_by_cam()
+        response = client.create(b_id)
 
 
 if __name__ == '__main__':
