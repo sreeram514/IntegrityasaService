@@ -1,6 +1,7 @@
 import hashlib
 import logging
 import psycopg2
+import re
 
 from sawtooth_sdk.processor.handler import TransactionHandler
 from sawtooth_sdk.processor.exceptions import InvalidTransaction
@@ -10,7 +11,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 class BarcodeTransactionHandler(TransactionHandler):
-    def __int__(self, namespace_prefix):
+    def __init__(self, namespace_prefix):
         self._namespace_prefix = namespace_prefix
 
     @property
@@ -28,11 +29,10 @@ class BarcodeTransactionHandler(TransactionHandler):
     def apply(self, transaction, context):
 
         # 1. Deserialize the transaction and verify it is valid
-        b_id, action, location, signer = _unpack_transaction(transaction)
-
+        b_id, action, upd_location, signer = _unpack_transaction(transaction)
         # 2. Retrieve the game data from state storage
         product_name, mfg_date, location, barcode_list = _get_state_data(context, self._namespace_prefix, b_id)
-        #
+
         # 3. Validate the game data
         # _validate_game_data(
         #     action, space, signer,
@@ -41,10 +41,15 @@ class BarcodeTransactionHandler(TransactionHandler):
         # 4. Apply the transaction
         if action == 'create':
             barcode_list = _get_barcode_details(b_id)
+
+        if action == 'update':
+            product_name, mfg_date, location, barcode_list = _get_state_data(context, self._namespace_prefix, b_id,
+                                                                             upd_location)
         # if action == 'delete':
         #     _delete_game(context, name, self._namespace_prefix)
         #     return
         #
+
         # upd_board, upd_state, upd_player1, upd_player2 = _play_xo(
         #     action, space, signer,
         #     board, state,
@@ -78,6 +83,7 @@ def _get_barcode_details(barcode):
         cur.close()
     return barcode_list
 
+
 def _unpack_transaction(transaction):
     header = transaction.header
 
@@ -105,7 +111,7 @@ def _validate_transaction(name, action, location):
     if not action:
         raise InvalidTransaction('Action is required')
 
-    if action not in ('create', 'take', 'delete'):
+    if action not in ('create', 'update', 'show'):
         raise InvalidTransaction('Invalid action: {}'.format(action))
 
     if action == 'update':
@@ -119,20 +125,30 @@ def _make_xo_address(namespace_prefix, b_id):
     return namespace_prefix + hashlib.sha512(b_id.encode('utf-8')).hexdigest()[:64]
 
 
-def _get_state_data(context, namespace_prefix, b_id):
+def _get_state_data(context, namespace_prefix, b_id, upd_location=None):
     # Get data from address
+    LOGGER.debug("In get state datasssssssssssssssssssssssss")
+    LOGGER.debug("In get xo address{}".format([_make_xo_address(namespace_prefix, b_id)]) )
     state_entries = context.get_state([_make_xo_address(namespace_prefix, b_id)])
-
+    LOGGER.debug("In get state entries{}".format(state_entries))
+    LOGGER.debug("In get state entries 00000000{}".format(state_entries[0]))
+    LOGGER.debug("In get state entries 11111111{}".format(state_entries[0].data))
+    append_location = ''
+    if upd_location is not None:
+        append_location = '-> {}'.format(upd_location)
     # context.get_state() returns a list. If no data has been stored yet
     # at the given address, it will be empty.
     if state_entries:
         try:
             state_data = state_entries[0].data
 
-            barcode_list = {b_id: (product_name, mfg_date, location) for b_id, product_name, mfg_date, location in
+            barcode_list = {b_id: (product_name, mfg_date, location + append_location) for
+                            b_id, product_name, mfg_date, location in
                             [barcode.split(',') for barcode in state_data.decode().split('|')]}
 
-            product_name = mfg_date = location = barcode_list[b_id]
+            (product_name, mfg_date, location) = barcode_list[re.sub("^0+", "", b_id)]
+            print("sdfffffffffffffffff"+product_name,mfg_date,location)
+
         except ValueError:
             raise InternalError("Failed to deserialize game data.")
 

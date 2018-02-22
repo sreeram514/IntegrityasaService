@@ -1,45 +1,46 @@
-import os
-import hashlib
-import base64
-from base64 import b64encode
-import time
-import requests
-import yaml
-from docopt import docopt
-from sawtooth_signing import create_context
-from sawtooth_signing import CryptoFactory
-from sawtooth_signing import ParseError
-from sawtooth_signing.secp256k1 import Secp256k1PrivateKey
-
-from sawtooth_sdk.protobuf.transaction_pb2 import TransactionHeader
-from sawtooth_sdk.protobuf.transaction_pb2 import Transaction
-from sawtooth_sdk.protobuf.batch_pb2 import BatchList
-from sawtooth_sdk.protobuf.batch_pb2 import BatchHeader
-from sawtooth_sdk.protobuf.batch_pb2 import Batch
-from sawtooth_barcode.barcode_reader import BarcodeReader
+#!/usr/bin/env python
+# -*- coding: UTF-8 -*-
 """BarCodeReaderCli.
 
 Usage:
-  barcode_cli.py create chain (-u <user> | --username <user>)
-  barcode_cli.py update chain (-u <user> | --username <user>)
+  barcode_cli.py create chain (-u <user> | --username <user>) [-b <barcode> | --barcode <barcode>]
+  barcode_cli.py show chain (-u <user> | --username <user>) [-b <barcode> | --barcode <barcode>]
+  barcode_cli.py update chain (-u <user> | --username <user>) (-l <location> | --location <location>) [-b <barcode> | --barcode <barcode>]
   barcode_cli.py (-h | --help)
   barcode_cli.py --version
-  # naval_fate.py ship new <name>...
-  # naval_fate.py ship <name> move <x> <y> [--speed=<kn>]
-  # naval_fate.py ship shoot <x> <y>
-  # naval_fate.py mine (set|remove) <x> <y> [--moored | --drifting]
-  # naval_fate.py (-h | --help)
-  # naval_fate.py --version
 
 Options:
   -h --help     Show this screen.
   -u --username username
+  -l --location updating location
+  -b --barcode  input barcode through cli
   --version     display version
-  # --speed=<kn>  Speed in knots [default: 10].
-  # --moored      Moored (anchored) mine.
-  # --drifting    Drifting mine.
 
 """
+
+from __future__ import print_function
+
+import hashlib
+import os
+import time
+import base64
+import re
+from base64 import b64encode
+
+import requests
+import yaml
+from docopt import docopt
+from sawtooth_sdk.protobuf.batch_pb2 import Batch
+from sawtooth_sdk.protobuf.batch_pb2 import BatchHeader
+from sawtooth_sdk.protobuf.batch_pb2 import BatchList
+from sawtooth_sdk.protobuf.transaction_pb2 import Transaction
+from sawtooth_sdk.protobuf.transaction_pb2 import TransactionHeader
+
+from sawtooth_barcode.barcode_reader import BarcodeReader
+from sawtooth_signing import CryptoFactory
+from sawtooth_signing import ParseError
+from sawtooth_signing import create_context
+from sawtooth_signing.secp256k1 import Secp256k1PrivateKey
 
 
 DISTRIBUTION_NAME = 'sawtooth-barcode'
@@ -175,13 +176,28 @@ class BarcodeClient:
         return self._send_request("batches", batch_list.SerializeToString(), 'application/octet-stream',
                                   auth_user=auth_user, auth_password=auth_password)
 
-    def create(self, name, wait=None, auth_user=None, auth_password=None):
-        return self._send_barcode_txn(name, "create", wait=wait, auth_user=auth_user, auth_password=auth_password)
+    def create(self, b_id, wait=None, auth_user=None, auth_password=None):
+        return self._send_barcode_txn(b_id, "create", wait=wait, auth_user=auth_user, auth_password=auth_password)
+
+    def show(self, b_id, auth_user=None, auth_password=None):
+
+        address = self._get_address(b_id)
+        result = self._send_request("state/{}".format(address), name=b_id, auth_user=auth_user,
+                                    auth_password=auth_password)
+        try:
+            return base64.b64decode(yaml.safe_load(result)["data"])
+
+        except BaseException:
+            return None
+
+    def update(self, b_id, location, wait=None, auth_user=None, auth_password=None):
+        return self._send_barcode_txn(b_id, "update", location=location, wait=wait, auth_user=auth_user,
+                                      auth_password=auth_password)
 
 
 class BarcodeOperations(object):
 
-    def __int__(self, user):
+    def __init__(self, user):
         self.user = user
 
     def _get_key_file(self):
@@ -198,20 +214,68 @@ class BarcodeOperations(object):
         except OSError as err:
             raise Exception('Failed to read private key {}: {}'.format(self.key_file, str(err)))
 
-    def create_chain(self):
+    def create_chain(self, b_id=None):
         self._validate_user()
         client = BarcodeClient(base_url=DEFAULT_URL, keyfile=self.key_file)
-        b_id = BarcodeReader.read_barcode_by_cam()
-        response = client.create(b_id)
+        read_barcode = BarcodeReader()
+        if b_id is None:
+            b_id = read_barcode.read_barcode_by_cam()
+        if b_id:
+            print('INFO: Barcode read: {}'.format(b_id))
+            response = client.create(b_id)
+            print("Response: {}".format(response))
+        else:
+            print('INFO: Unable to read barcode')
+
+    def show_chain(self, b_id=None):
+        self._validate_user()
+        client = BarcodeClient(base_url=DEFAULT_URL, keyfile=self.key_file)
+        read_barcode = BarcodeReader()
+        if b_id is None:
+            b_id = read_barcode.read_barcode_by_cam()
+        if b_id:
+            print('INFO: Barcode read: {}'.format(b_id))
+            data = client.show(b_id)
+            if data is not None:
+                product_name, mfg_date, location = {
+                    b_id: (product_name, mfg_date, location) for b_id, product_name, mfg_date, location in
+                [barcode.split(',') for barcode in data.decode().split('|')]}[re.sub("^0+", "", b_id)]
+                print("\n")
+                print("\n")
+                print("Barcode Number:      {}".format(b_id))
+                print("Product Name:        {}".format(product_name))
+                print("Manufacturing Date:  {}".format(mfg_date))
+                print("Locations Crossed:   {}".format(location))
+                print("\n")
+            else:
+                print('Barcode not Found')
+        else:
+            print('INFO: Unable to read barcode')
+
+    def update_chain(self, location, b_id=None):
+        self._validate_user()
+        client = BarcodeClient(base_url=DEFAULT_URL, keyfile=self.key_file)
+        read_barcode = BarcodeReader()
+        if b_id is None:
+            b_id = read_barcode.read_barcode_by_cam()
+        if b_id:
+            print('INFO: Barcode read: {}'.format(b_id))
+            response = client.update(b_id, location)
+            print("Response: {}".format(response))
+        else:
+            print('INFO: Unable to read barcode')
 
 
-if __name__ == '__main__':
+def main():
     args = docopt(__doc__, version='Barcode 1.0')
-    # print(arguments)
+    print(args)
     if args['--username']:
         username = args['--username']
+        barcode_ops = BarcodeOperations(username)
         # validate user with action
         if args['create']:
-            barcode_ops = BarcodeOperations(username)
-            barcode_ops.create_chain()
-
+            barcode_ops.create_chain(args['<barcode>'])
+        if args['show']:
+            barcode_ops.show_chain(args['<barcode>'])
+        if args['update']:
+            barcode_ops.update_chain(location=args['--location'], b_id=args['<barcode>'])

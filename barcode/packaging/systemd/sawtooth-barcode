@@ -1,0 +1,1 @@
+SAWTOOTH_BARCODE_ARGS=-v -C tcp://localhost:4004

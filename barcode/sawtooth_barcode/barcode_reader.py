@@ -131,7 +131,7 @@ import pygame.surfarray
 
 class BarcodeReader(object):
 
-    def __int__(self):
+    def __init__(self):
         self.cam_name = '/dev/video0'
         self.cam_resolution = (640, 480)  # A general cam resolution
         self.scanner = zbar.Scanner()
@@ -143,7 +143,7 @@ class BarcodeReader(object):
         cam = pygame.camera.Camera(self.cam_name, self.cam_resolution)
 
         screen = pygame.display.set_mode(cam.get_size())
-        print('Get a pic of barcode. If pic doesnot look good, then press enter at terminal. \
+        print('Get a pic of barcode. If pic doesnot look good, then press enter at terminal. \n\
            Camera will take another pic. When done press q and enter to quit camera mode')
         while True:
             cam.start()

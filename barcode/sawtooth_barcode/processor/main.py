@@ -8,8 +8,10 @@ from sawtooth_sdk.processor.log import log_configuration
 from sawtooth_sdk.processor.config import get_log_dir
 from sawtooth_barcode.processor.barcode_handler import BarcodeTransactionHandler
 
+
 def main():
 
+    processor = None
     try:
         processor = TransactionProcessor(url='tcp://127.0.0.1:4004')
         log_dir = get_log_dir()
