@@ -6,6 +6,7 @@ Usage:
   barcode_cli.py create chain (-u <user> | --username <user>) [-b <barcode> | --barcode <barcode>]
   barcode_cli.py show chain (-u <user> | --username <user>) [-b <barcode> | --barcode <barcode>]
   barcode_cli.py update chain (-u <user> | --username <user>) (-l <location> | --location <location>) [-b <barcode> | --barcode <barcode>]
+  barcode_cli.py add supplier <name> (-u <user> | --username <user>) (-k <keypath> | --keypath <keypath>)
   barcode_cli.py (-h | --help)
   barcode_cli.py --version
 
@@ -41,7 +42,7 @@ from sawtooth_signing import CryptoFactory
 from sawtooth_signing import ParseError
 from sawtooth_signing import create_context
 from sawtooth_signing.secp256k1 import Secp256k1PrivateKey
-
+from sawtooth_signing.secp256k1 import Secp256k1PublicKey
 
 DISTRIBUTION_NAME = 'sawtooth-barcode'
 DEFAULT_URL = 'http://127.0.0.1:8008'
@@ -68,6 +69,7 @@ class BarcodeClient:
 
         try:
             private_key = Secp256k1PrivateKey.from_hex(private_key_str)
+            # Secp256k1PublicKey(private_key.secp256k1_private_key.pubkey)
         except ParseError as e:
             raise Exception('Unable to load private key: {}'.format(str(e)))
 
@@ -194,17 +196,35 @@ class BarcodeClient:
         return self._send_barcode_txn(b_id, "update", location=location, wait=wait, auth_user=auth_user,
                                       auth_password=auth_password)
 
+    def add_priv_key(self, user, keypath, wait=None, auth_user=None, auth_password=None):
+
+        try:
+            with open(keypath) as fd:
+                private_key_str = fd.read().strip()
+        except OSError as err:
+            raise Exception('Failed to read private key {}: {}'.format(keypath, str(err)))
+
+        try:
+            private_key = Secp256k1PrivateKey.from_hex(private_key_str)
+            # Secp256k1PublicKey(private_key.secp256k1_private_key.pubkey)
+        except ParseError as e:
+            raise Exception('Unable to load private key: {}'.format(str(e)))
+
+        return self._send_barcode_txn(user, 'add', location=private_key, wait=wait, auth_user=auth_user,
+                                      auth_password=auth_password)
+
 
 class BarcodeOperations(object):
 
     def __init__(self, user):
         self.user = user
 
-    def _get_key_file(self):
+    def _get_key_file(self, user=None):
+        user = self.user if user is None else user
         home = os.path.expanduser("~")
         key_dir = os.path.join(home, ".sawtooth", "keys")
 
-        return '{}/{}.priv'.format(key_dir, self.user)
+        return '{}/{}.priv'.format(key_dir, user)
 
     def _validate_user(self):
         self.key_file = self._get_key_file()
@@ -212,7 +232,9 @@ class BarcodeOperations(object):
             with open(self.key_file) as fd:
                 self.private_key_str = fd.read().strip()
         except OSError as err:
-            raise Exception('Failed to read private key {}: {}'.format(self.key_file, str(err)))
+            raise Exception(
+                'Failed to read private key {}: {} create user using sawtooth keygen command'.format(self.key_file,
+                                                                                                     str(err)))
 
     def create_chain(self, b_id=None):
         self._validate_user()
@@ -265,6 +287,14 @@ class BarcodeOperations(object):
         else:
             print('INFO: Unable to read barcode')
 
+    def add_user(self, user, keypath):
+        self._validate_user()
+        client = BarcodeClient(base_url=DEFAULT_URL, keyfile=self.key_file)
+        if keypath is None:
+            keypath = self._get_key_file(user)
+        client.add_priv_key(user, keypath)
+
+
 
 def main():
     args = docopt(__doc__, version='Barcode 1.0')
@@ -274,7 +304,10 @@ def main():
         barcode_ops = BarcodeOperations(username)
         # validate user with action
         if args['create']:
-            barcode_ops.create_chain(args['<barcode>'])
+            if args['chain']:
+                barcode_ops.create_chain(args['<barcode>'])
+            elif args['supplier']:
+                barcode_ops.add_user(args['<name>'], args['--keypath'])
         if args['show']:
             barcode_ops.show_chain(args['<barcode>'])
         if args['update']:

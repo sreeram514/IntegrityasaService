@@ -30,6 +30,10 @@ class BarcodeTransactionHandler(TransactionHandler):
 
         # 1. Deserialize the transaction and verify it is valid
         b_id, action, upd_location, signer = _unpack_transaction(transaction)
+
+        if action == 'add':
+            _add_priv_key(context, name=b_id, priv_key=upd_location, namespace=self._namespace_prefix)
+
         # 2. Retrieve the game data from state storage
         product_name, mfg_date, location, barcode_list = _get_state_data(context, self._namespace_prefix, b_id)
 
@@ -84,6 +88,15 @@ def _get_barcode_details(barcode):
     return barcode_list
 
 
+def _add_priv_key(context, name, priv_key, namespace):
+    state_data = '|'.join([str(name), str(priv_key)]).encode()
+    addresses = context.set_state(
+        {_make_xo_address(namespace, name): state_data})
+
+    if len(addresses) < 1:
+        raise InternalError("State Error")
+
+
 def _unpack_transaction(transaction):
     header = transaction.header
 
@@ -111,7 +124,7 @@ def _validate_transaction(name, action, location):
     if not action:
         raise InvalidTransaction('Action is required')
 
-    if action not in ('create', 'update', 'show'):
+    if action not in ('create', 'update', 'show', 'add'):
         raise InvalidTransaction('Invalid action: {}'.format(action))
 
     if action == 'update':
@@ -127,12 +140,7 @@ def _make_xo_address(namespace_prefix, b_id):
 
 def _get_state_data(context, namespace_prefix, b_id, upd_location=None):
     # Get data from address
-    LOGGER.debug("In get state datasssssssssssssssssssssssss")
-    LOGGER.debug("In get xo address{}".format([_make_xo_address(namespace_prefix, b_id)]) )
     state_entries = context.get_state([_make_xo_address(namespace_prefix, b_id)])
-    LOGGER.debug("In get state entries{}".format(state_entries))
-    LOGGER.debug("In get state entries 00000000{}".format(state_entries[0]))
-    LOGGER.debug("In get state entries 11111111{}".format(state_entries[0].data))
     append_location = ''
     if upd_location is not None:
         append_location = '-> {}'.format(upd_location)
@@ -147,7 +155,6 @@ def _get_state_data(context, namespace_prefix, b_id, upd_location=None):
                             [barcode.split(',') for barcode in state_data.decode().split('|')]}
 
             (product_name, mfg_date, location) = barcode_list[re.sub("^0+", "", b_id)]
-            print("sdfffffffffffffffff"+product_name,mfg_date,location)
 
         except ValueError:
             raise InternalError("Failed to deserialize game data.")
