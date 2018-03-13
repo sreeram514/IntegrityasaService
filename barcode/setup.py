@@ -32,7 +32,7 @@ if os.path.exists("/lib/systemd/system"):
 
 setup(
     name='sawtooth-barcode',
-    version=1.2,
+    version=1.0,
     description='Sawtooth barcode reader',
     author='Sreeram',
     url='https://github.com/hyperledger/sawtooth-core',

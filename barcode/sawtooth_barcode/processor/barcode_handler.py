@@ -32,7 +32,9 @@ class BarcodeTransactionHandler(TransactionHandler):
         b_id, action, upd_location, signer = _unpack_transaction(transaction)
 
         if action == 'add':
-            _add_priv_key(context, name=b_id, priv_key=upd_location, namespace=self._namespace_prefix)
+            _add_priv_key(context, name=b_id, tag=upd_location.split(':')[0], priv_key=upd_location.split(':')[1],
+                          namespace=self._namespace_prefix)
+            return
 
         # 2. Retrieve the game data from state storage
         product_name, mfg_date, location, barcode_list = _get_state_data(context, self._namespace_prefix, b_id)
@@ -88,8 +90,8 @@ def _get_barcode_details(barcode):
     return barcode_list
 
 
-def _add_priv_key(context, name, priv_key, namespace):
-    state_data = '|'.join([str(name), str(priv_key)]).encode()
+def _add_priv_key(context, name, tag, priv_key, namespace):
+    state_data = '|'.join([str(name), str(tag), str(priv_key), ]).encode()
     addresses = context.set_state(
         {_make_xo_address(namespace, name): state_data})
 
@@ -174,7 +176,7 @@ def _store_state_data(context, barcode_list, namespace_prefix, b_id):
     state_data = '|'.join(sorted(
         [','.join([str(idd), str(product_name), str(mfg_date), location]) for idd, (product_name, mfg_date, location) in
          barcode_list.items()])).encode()
-
+    tate_data = '|'.join([str(name), str(tag), str(priv_key), ]).encode()
     addresses = context.set_state(
         {_make_xo_address(namespace_prefix, b_id): state_data})
 
