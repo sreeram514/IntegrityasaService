@@ -1,2 +1,3 @@
 # IntegrityasaService
-Creating integrity between retailer and customer
+Adding integrity between retailer and customer
+
